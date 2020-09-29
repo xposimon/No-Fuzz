@@ -1,6 +1,6 @@
 import time, os, subprocess
 
-last_time = 30 #seconds
+last_time = 12 * 3600 #seconds
 parallel_num = 2
 execute_one_round = 7
 
@@ -8,7 +8,7 @@ bin_format = '{binname}_{num}_{attype}'
 cmd_format = 'nohup afl-fuzz -Q -i ./{bin_name}/input -o ./{bin_name}/{outputdir} {delay} -%s {taskname}_fuzz%d -- ./{bin_name}/{taskname} {run_cmd} >/dev/null 2>&1 &'
 
 run_cmds = {'readelf':' -a @@', 'objdump':' -d @@', 'nm':' @@', 'objcopy':' -S @@'}
-tasks = {'readelf':[('0','ori', '')] + [(str(i*100), 'funcchain', '') if i < 2 else (str(i*100), 'funcchain', '-t 5000') for i in range(1, 6)] + [('10000', 'atbr', '-t 5000'), ("1000", "2funcchain", '-t 5000'), ("1000", "funcchain", "-t 5000"), ("fuzztion", "all", "-t 5000")], 
+tasks = {'readelf':[('0','ori', '')] + [(str(i*100), 'funcchain', '') if i < 2 else (str(i*100), 'funcchain', '-t 5000') for i in range(1, 6)] + [('10000', 'atbr', '-t 5000'), ("1000", "2funcchain", '-t 5000'), ("1000", "funcchain", "-t 5000")], 
 'objdump':[('0', 'ori', ''), ('100', '0funcchain', ''), ('500', '0funcchain', ' -t 5000'), ('1000', '2funcchain', ' -t 5000')],
 'nm':[('0', 'ori', ''), ('100', 'funcchain', ''), ('500', 'funcchain', ' -t 5000'), ('1000', 'funcchain', ' -t 5000')],
 'objcopy':[('0', 'ori', ''), ('100', 'funcchain', ''), ('500', 'funcchain', ' -t 5000'), ('1000', 'funcchain', ' -t 5000')]
@@ -25,8 +25,8 @@ for binname in tasks.keys():
         parallel_commands += [commands[i]%(host_type, id) for host_type, id in [('M',0)] + [('S', j) for j in range(1, parallel_num)] ]
 
 cnt = 0
-while cnt*parallel_num*execute_one_round < len(parallel_readelf_commands):
-    cmd = parallel_readelf_commands[cnt*parallel_num*execute_one_round:(cnt+1)*parallel_num*execute_one_round]
+while cnt*parallel_num*execute_one_round < len(parallel_commands):
+    cmd = parallel_commands[cnt*parallel_num*execute_one_round:(cnt+1)*parallel_num*execute_one_round]
     correct_check_num = len(cmd)
     cmd = '\n'.join(cmd)
     time.sleep(2)

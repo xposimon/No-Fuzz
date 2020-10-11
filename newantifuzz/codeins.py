@@ -1,7 +1,7 @@
 import re, random, string, os, sys
 
 CODE_SEG_LEN = 100
-TOPN_FREQUENT_FUNCS = 3
+TOPN_FREQUENT_FUNCS = 10
 INIT_FUNC_NAME = 'ATinit'
 COUNTER_NAME = 'ab_count'
 FUNC_BUF_NAME = 'funcs_buf'
@@ -363,7 +363,7 @@ int cal_idx(int count)
     if(remaining <= 0) return -1;
     int idx = rand() % (remaining);
     int res = ''' + INDEX_NAME + '''[idx];
-    for (int i = idx; i < {0}-count-1; i++)''' + INDEX_NAME + '''[i] = ''' + INDEX_NAME + '''[i+1];
+    ''' + INDEX_NAME + '''[idx] = ''' + INDEX_NAME + '''[remaining-1];
     return res;
 }}
 '''
@@ -407,6 +407,8 @@ int cal_idx(int count)
                     call_start, new_start = res.span()
                     call_start += search_start
                     new_start += search_start
+                    if func_name == 'print_archive_filename_bsd':
+                        print(func_argument)
                     if "," in func_argument:
                         func_argument = func_argument.split(",")[0]
                     if re.search(make_pattern(func_argument), found_call) is not None:
@@ -661,9 +663,17 @@ long gs(long a, int is_var)
 
         if start_def > main_start_def:
             start_def = main_start_def
+        res = re.search(r"#\s*include\s*<\s*std", self.content)
+
+        if res is not None:
+            include_pos = res.span()[0]
+            if include_pos > start_def:
+                start_def = include_pos
 
         main_def_codes = '\n'
         for funcname in self.fakecodes.keys():
+
+
             def_pattern = r'(\s*extern\s*|\s*unsigned\s*|\s*inline\s*|\s*signed\s*|\s*static\s*|\s*const\s*)*(\w+ \w+\(.*\){)'
             res = re.findall(def_pattern, self.fakecodes[funcname])
 
@@ -673,7 +683,7 @@ long gs(long a, int is_var)
                     func_def.replace("\n", '')
                 main_def_codes += func_def[:-1]+";\n"
 
-            def_pattern = r'(\s*extern\s*|\s*unsigned\s*|\s*inline\s*|\s*signed\s*|\s*static\s*|\s*const\s*)*(\w+\s*\**\s*%s\s*\([^;]*?\))'%(funcname)
+            def_pattern = r'(\s*extern\s*|\s*unsigned\s*|\s*inline\s*|\s*signed\s*|\s*static\s*|\s*const\s*)*(\w+\s*(\s+|\*+)\s*%s\s*\([^;]*?\))'%(funcname)
             res = re.search(def_pattern, self.content)
             main_def_codes += res.group().strip() + ";\n"
 
@@ -685,8 +695,14 @@ long gs(long a, int is_var)
 
 
 if __name__ == "__main__":
-    print(sys.argv[1], sys.argv[2])
-    CODE_SEG_LEN = int(sys.argv[2])
+    print(sys.argv)
+    if len(sys.argv) < 2:
+        raise RuntimeError("No sufficient parameters")
+    if len(sys.argv) > 2:
+        CODE_SEG_LEN = int(sys.argv[2])
+    if len(sys.argv) > 3:
+        TOPN_FREQUENT_FUNCS = int(sys.argv[3])
+
     anti = Antifuzz([sys.argv[1]], funcchain=True)
     anti.funcsIdentify()
     anti.funcTrans()

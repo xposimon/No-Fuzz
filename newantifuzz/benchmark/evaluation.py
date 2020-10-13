@@ -9,10 +9,10 @@ cmd_formats = ['nohup afl-fuzz -Q -i ./{bin_name}/input -o ./{bin_name}/{outputd
 #qsym_cmd_formats = ['nohup afl-fuzz -Q -i ./{bin_name}/input -o ./{bin_name}/{outputdir} {delay} -%s {taskname}_fuzz%d -- ./{bin_name}/{taskname} {run_cmd} >/dev/null 2>&1 &', 'nohup python3 run_qsym_afl.py -a {taskname}_fuzz%d -o ./{bin_name}/{outputdir} -n qsym -- ./{bin_name}/{taskname} {run_cmd} >/dev/null 2>&1 &']
 
 run_cmds = {'readelf':' -a @@', 'objdump':' -d @@', 'nm':' @@', 'objcopy':' -S @@'}
-tasks = {'readelf':[('0','ori', '')] + [(str(i*100), 'funcchain', '') if i < 2 else (str(i*100), 'funcchain', '-t 5000') for i in (1,4,7)] + [('10000', 'atbr', '-t 5000')], 
-'objdump':[('0', 'ori', ''), ('100', 'funcchain', ''), ('400', 'funcchain', ' -t 5000'), ('700', 'funcchain', ' -t 5000'), ('10000', 'atbr', '-t 5000')],
-'nm':[('0', 'ori', ''), ('100', 'funcchain', ''), ('400', 'funcchain', ' -t 5000'), ('700', 'funcchain', ' -t 5000'), ('10000', 'atbr', '-t 5000')],
-'objcopy':[('0', 'ori', ''), ('100', 'funcchain', ''), ('400', 'funcchain', ' -t 5000'), ('700', 'funcchain', ' -t 5000'), ('10000', 'atbr', '-t 5000')]
+tasks = {'readelf':[('0','ori', '')] + [(str(i*100), 'funcchain', '') if i < 2 else (str(i*100), 'funcchain', '-t 5000') for i in (5,10,30)] + [('10000', 'atbr', '-t 5000')], 
+'objdump':[('0', 'ori', ''), ('500', 'funcchain', ''), ('1000', 'funcchain', ' -t 5000'), ('3000', 'funcchain', ' -t 5000'), ('10000', 'atbr', '-t 5000')],
+'nm':[('0', 'ori', ''), ('500', 'funcchain', ''), ('1000', 'funcchain', ' -t 5000'), ('3000', 'funcchain', ' -t 5000'), ('10000', 'atbr', '-t 5000')],
+'objcopy':[('0', 'ori', ''), ('500', 'funcchain', ''), ('1000', 'funcchain', ' -t 5000'), ('3000', 'funcchain', ' -t 5000'), ('10000', 'atbr', '-t 5000')]
 }
 
 commands = []

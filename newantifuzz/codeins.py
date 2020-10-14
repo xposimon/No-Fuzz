@@ -1,13 +1,15 @@
 import re, random, string, os, sys
 
 CODE_SEG_LEN = 100
-TOPN_FREQUENT_FUNCS = 10
+NOP_NUM = 10
+TOPN_FREQUENT_FUNCS= 10
 INIT_FUNC_NAME = 'ATinit'
 COUNTER_NAME = 'ab_count'
 FUNC_BUF_NAME = 'funcs_buf'
 FUNC_PTR_NAME = 'funcs'
 INDEX_NAME = 'funcs_idx'
 FUNC_PTR_TYPE_SUFFIX = 'ptr'
+INTERMEDIATE_IDENT = 'itm'
 MAXIMUM_OVERLOAD_VALUE = 255 # Better no more than 1000
 
 def get_random_string(length_limit):
@@ -29,7 +31,7 @@ def make_typedef(func_name, l):
     ret_type = l[0]
     var_type = l[1:]
     var_type = ','.join(var_type)
-
+    os. sys
     template = 'typedef {0} (*{1}'+FUNC_PTR_TYPE_SUFFIX+') ({2});'
     return template.format(ret_type, func_name, var_type)
 
@@ -76,11 +78,22 @@ class Antifuzz:
 
 
     def genFakeFunc(self, func_type, argu, func_name, func_number):
+
+        
+        intermidiate_junk_template = '''
+extern {0} {1} ({2});
+__asm__ (
+"{1}:\\n"
+"  {4}"
+"  jmp {3}\\n"
+);
+'''
+
         fake_func_ret_template = '''
 {0} {1}({2}){{
     {7}
     int {3} = cal_idx('''+COUNTER_NAME+'''++);
-    if ({3} != -1){{{0} {4} = (({6})'''+FUNC_PTR_NAME+'''[{3}])({5});
+    if ({3} != -1){{{0} {4} = (({6})('''+FUNC_PTR_NAME+'''[{3}]+rand()%'''+str(NOP_NUM)+'''))({5});
         return {4};
     }}
 }}
@@ -90,7 +103,7 @@ class Antifuzz:
 void {0}({1}){{
     {5}
     int {2} = cal_idx('''+COUNTER_NAME+'''++);
-    if ({2} != -1){{(({4})'''+FUNC_PTR_NAME+'''[{2}])({3});
+    if ({2} != -1){{(({4})('''+FUNC_PTR_NAME+'''[{2}]+rand()%'''+str(NOP_NUM)+'''))({3});
         return;
     }}
 }}
@@ -129,27 +142,33 @@ void {0}({1}){{
 
         for i in range(func_number):
             if func_type.lower() == 'void':
+                itm_func = intermidiate_junk_template.format('void', fake_func_name+INTERMEDIATE_IDENT+str(i), argu, fake_func_name + str(i), NOP_NUM*"nop\\n")
+            
                 fake_func = fake_func_void_template.format(fake_func_name + str(i), argu, idx_name, vars, func_name+FUNC_PTR_TYPE_SUFFIX, '')
                 fake_key_seg = fake_func.strip('\n').split("\n")
                 fake_key_seg = [j for j in fake_key_seg if j.strip() != '']
                 fake_key_seg = fake_key_seg[1:3]
             else:
+                itm_func = intermidiate_junk_template.format(func_type, fake_func_name+INTERMEDIATE_IDENT+str(i), argu, fake_func_name + str(i), NOP_NUM*"nop\\n")
                 ret_name = get_random_string(10)
                 fake_func = fake_func_ret_template.format(func_type, fake_func_name+str(i), argu, idx_name, ret_name, vars, func_name+FUNC_PTR_TYPE_SUFFIX, '')
                 fake_key_seg = fake_func.strip('\n').strip().split("\n")
                 fake_key_seg = [j for j in fake_key_seg if j.strip() != '']
                 fake_key_seg = fake_key_seg[1:3]
-
+            
+            code_seg += itm_func
             code_seg += fake_func
 
         if func_type.lower() == 'void':
-            init_func = fake_func_void_template.format(fake_func_name+INIT_FUNC_NAME, argu, idx_name, vars, func_name + FUNC_PTR_TYPE_SUFFIX,
-                                                       COUNTER_NAME + ' = 0;\n'+FUNC_PTR_NAME+' = %s;')
+            init_itm_func = intermidiate_junk_template.format('void', fake_func_name+INTERMEDIATE_IDENT+INIT_FUNC_NAME, argu, fake_func_name+INIT_FUNC_NAME, NOP_NUM*"nop\\n")
+            init_func = init_itm_func + fake_func_void_template.format(fake_func_name+INIT_FUNC_NAME, argu, idx_name, vars, func_name + FUNC_PTR_TYPE_SUFFIX, COUNTER_NAME + ' = 0;\n'+FUNC_PTR_NAME+' = %s;')
         else:
+            init_itm_func = intermidiate_junk_template.format(func_type, fake_func_name+INTERMEDIATE_IDENT+INIT_FUNC_NAME, argu, fake_func_name+INIT_FUNC_NAME, NOP_NUM*"nop\\n")
             ret_name = get_random_string(10)
-            init_func = fake_func_ret_template.format(func_type, fake_func_name+INIT_FUNC_NAME, argu, idx_name, ret_name,
-                                                      vars, func_name + FUNC_PTR_TYPE_SUFFIX, COUNTER_NAME + ' = 0;\n'+FUNC_PTR_NAME+' = %s;')
+            init_func = init_itm_func + fake_func_ret_template.format(func_type, fake_func_name+INIT_FUNC_NAME, argu, idx_name, ret_name, vars, func_name + FUNC_PTR_TYPE_SUFFIX, COUNTER_NAME + ' = 0;\n'+FUNC_PTR_NAME+' = %s;')
 
+        origin_itm_func = intermidiate_junk_template.format(func_type, fake_func_name+INTERMEDIATE_IDENT, argu, fake_func_name, NOP_NUM*"nop\\n")
+        code_seg += origin_itm_func
 
         return code_seg, fake_key_seg, init_func
 
@@ -160,6 +179,7 @@ void {0}({1}){{
         stack = 1
 
         res = re.search(search_pattern, codes)
+        
         start_def, end_def = res.span()
 
         # In case codes[end_def] == "{"
@@ -312,7 +332,7 @@ void {0}({1}){{
             func_argument = ori_func_argument.strip().replace("\t", '').replace("\n", '').replace("  ", " ")
             added_code_seg, ins_code_seg, init_func = self.genFakeFunc(func_type, func_argument, func_name, CODE_SEG_LEN-1)
             if added_code_seg is None:
-                continue
+                continue 
 
             self.fakecodes[func_name] = ''
 
@@ -377,8 +397,8 @@ int cal_idx(int count)
         for func_name, l in self.funcPtr.items():
             self.fakecodes[func_name] = make_typedef(func_name, l) + '\n' + self.fakecodes[func_name]
             real_func_pos = random.randint(0, CODE_SEG_LEN)
-            tmp_list = [func_name+str(id) for id in range(CODE_SEG_LEN-1)]
-            tmp_list = tmp_list[:real_func_pos] + [func_name] + tmp_list[real_func_pos:]
+            tmp_list = [func_name+INTERMEDIATE_IDENT+str(id) for id in range(CODE_SEG_LEN-1)]
+            tmp_list = tmp_list[:real_func_pos] + [func_name+INTERMEDIATE_IDENT] + tmp_list[real_func_pos:]
             funcs_list += tmp_list
             funcs_pos[func_name] = cnt
             cnt += 1
@@ -391,7 +411,8 @@ int cal_idx(int count)
 
         # Function calls initialization
         for func_name,l in self.funcPtr.items():
-            self.fakecodes[func_name] += init_funcs[func_name]%('&'+FUNC_BUF_NAME+'[{0}]'.format(funcs_pos[func_name]*CODE_SEG_LEN))
+            tmp = init_funcs[func_name].replace("rand()%", "rand()%%")
+            self.fakecodes[func_name] += tmp%('&'+FUNC_BUF_NAME+'[{0}]'.format(funcs_pos[func_name]*CODE_SEG_LEN))
 
         if self.funcchain:
         # Replace function calls with init functions
@@ -407,17 +428,14 @@ int cal_idx(int count)
                     call_start, new_start = res.span()
                     call_start += search_start
                     new_start += search_start
-                    if func_name == 'print_archive_filename_bsd':
-                        print(func_argument)
+                    
                     if "," in func_argument:
                         func_argument = func_argument.split(",")[0]
                     if re.search(make_pattern(func_argument), found_call) is not None:
                         search_start = new_start
                     else:
-                        self.content = self.content[:call_start] + \
-                                       self.content[call_start:new_start].replace(func_name, func_name+ INIT_FUNC_NAME, 1) + \
-                                       self.content[new_start:]
-
+                        self.content = self.content[:call_start] + self.content[call_start:new_start].replace(func_name, func_name+INTERMEDIATE_IDENT +INIT_FUNC_NAME, 1) +  self.content[new_start:]
+                
                     res = re.search(pattern, self.content[search_start:])
 
         earliest_fake_code = 99999999999999999
@@ -446,7 +464,7 @@ int cal_idx(int count)
             if earliest_fake_code > start_def:
                 earliest_fake_code = start_def
                 if self.funcchain:
-                    self.earliest_func = "(\s*extern\s*|\s*unsigned\s*|\s*inline\s*|\s*signed\s*|\s*static\s*|\s*const\s*)*\s*{0}\s*{1}\s*\(\s*{2}\s*\)\s*{{".format(func_type, func_name+"0", func_argument)
+                    self.earliest_func = "(\s*extern\s*|\s*unsigned\s*|\s*inline\s*|\s*signed\s*|\s*static\s*|\s*const\s*)*\s*{0}\s*{1}\s*\(\s*{2}\s*\)\s*;".format(func_type, func_name+INTERMEDIATE_IDENT+"0", func_argument)
                 else:
                     self.earliest_func = "(\s*extern\s*|\s*unsigned\s*|\s*inline\s*|\s*signed\s*|\s*static\s*|\s*const\s*)*\s*{0}\s*{1}\s*\(\s*{2}\s*\)\s*{{".format(func_type, func_name, func_argument)
 

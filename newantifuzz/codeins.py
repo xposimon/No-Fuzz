@@ -10,6 +10,8 @@ FUNC_PTR_NAME = 'funcs'
 INDEX_NAME = 'funcs_idx'
 FUNC_PTR_TYPE_SUFFIX = 'ptr'
 INTERMEDIATE_IDENT = 'itm'
+REPATED_INS = 'nop'
+NOP_NUM = 10
 MAXIMUM_OVERLOAD_VALUE = 255 # Better no more than 1000
 
 def get_random_string(length_limit):
@@ -18,7 +20,6 @@ def get_random_string(length_limit):
     letters = string.ascii_letters
     result_str = ''.join(random.choice(letters) for i in range(length))
     return result_str
-
 def make_pattern(s):
     s = s.replace("\\", "\\\\").replace("*", "\\*").replace("(", "\\(").replace(")", "\\)").replace(".", "\\.").replace("+", '\\+').replace("[", '\\[').replace("]", '\\]').replace("?", "\\?").replace("/", '\\/').replace("|", '\\|')
     # Replace spaces with \s
@@ -57,10 +58,11 @@ def check_nested(operand):
 class Antifuzz:
     # Antifuzz for C
 
-    def __init__(self, sources, funcchain = True, constrans = True):
+    def __init__(self, sources, funcchain = True, constrans = True, landingspace=True):
         self.sources = sources
         self.funcchain = funcchain
         self.constrans = constrans
+        self.landingspace = landingspace
         # self.funcPattern = r"(\w+\s*[\*,&]*)\s+(\w+)\s*\(([^,{})]*),([^,{})]*)\)"
 
         self.commonFuncs = ['bool', 'int', 'char', 'void', 'float', 'long', 'double', 'wchar_t']
@@ -71,6 +73,7 @@ class Antifuzz:
         self.toTransFunc = {}
         self.funcPtr = {}
         self.fakecodes = {}
+        self.ori_itm_funcs = {}
         self.def_codes = '''
 #include<stdlib.h>
 #include<time.h>
@@ -83,9 +86,9 @@ class Antifuzz:
         intermidiate_junk_template = '''
 extern {0} {1} ({2});
 __asm__ (
-"{1}:\n"
-"  {2}"
-"  jmp {3}\n"
+"{1}:\\n"
+"  {4}"
+"  jmp {3}\\n"
 );
 '''
 
@@ -93,7 +96,7 @@ __asm__ (
 {0} {1}({2}){{
     {7}
     int {3} = cal_idx('''+COUNTER_NAME+'''++);
-    if ({3} != -1){{{0} {4} = (({6})'''+FUNC_PTR_NAME+'''[{3}])({5});
+    if ({3} != -1){{{0} {4} = (({6})('''+FUNC_PTR_NAME+'''[{3}]+rand()%'''+str(NOP_NUM+1)+'''))({5});
         return {4};
     }}
 }}
@@ -103,7 +106,7 @@ __asm__ (
 void {0}({1}){{
     {5}
     int {2} = cal_idx('''+COUNTER_NAME+'''++);
-    if ({2} != -1){{(({4})'''+FUNC_PTR_NAME+'''[{2}])({3});
+    if ({2} != -1){{(({4})('''+FUNC_PTR_NAME+'''[{2}]+rand()%'''+str(NOP_NUM+1)+'''))({3});
         return;
     }}
 }}
@@ -122,8 +125,6 @@ void {0}({1}){{
 
             # Ignore arguments with function pointers
             if len(tmp) >= 3:
-                del self.funcPtr[func_name]
-                return None, None, None
                 del self.funcPtr[func_name]
                 return None, None, None, None
 
@@ -145,7 +146,6 @@ void {0}({1}){{
         for i in range(func_number):
             if func_type.lower() == 'void':
                 itm_func = intermidiate_junk_template.format('void', fake_func_name+INTERMEDIATE_IDENT+str(i), argu, fake_func_name + str(i), NOP_NUM*(REPATED_INS+"\\n"))
-            
                 fake_func = fake_func_void_template.format(fake_func_name + str(i), argu, idx_name, vars, func_name+FUNC_PTR_TYPE_SUFFIX, '')
                 fake_key_seg = fake_func.strip('\n').split("\n")
                 fake_key_seg = [j for j in fake_key_seg if j.strip() != '']
@@ -159,8 +159,8 @@ void {0}({1}){{
                 fake_key_seg = fake_key_seg[1:3]
             
             code_seg += fake_func
+            if self.lan
             code_seg += itm_func
-            
 
         if func_type.lower() == 'void':
             init_func = fake_func_void_template.format(fake_func_name+INIT_FUNC_NAME, argu, idx_name, vars, func_name + FUNC_PTR_TYPE_SUFFIX, COUNTER_NAME + ' = 0;\n'+FUNC_PTR_NAME+' = %s;')
@@ -418,21 +418,21 @@ int cal_idx(int count)
         # Replace function calls with init functions
             for func_name in self.funcPtr.keys():
                 func_argument = self.toTransFunc[func_name][1]
+                pattern = r"[^\w]%s\s*\(([^;]*?)\)" % (func_name)
+                search_start = 0
                 res = re.search(pattern, self.content[search_start:])
                 while res is not None:
                     found_call = res.group()
                     call_start, new_start = res.span()
                     call_start += search_start
                     new_start += search_start
-                    if func_name == 'print_archive_filename_bsd':
-                        print(func_argument)
+                    
                     if "," in func_argument:
                         func_argument = func_argument.split(",")[0]
                     if re.search(make_pattern(func_argument), found_call) is not None:
                         search_start = new_start
                     else:
-                        self.content[call_start:new_start].replace(func_name, func_name+IN:QQQTERSIIII +INIT_FUNC_NAME, 1) + \
-                                       self.content[new_start:]
+                        self.content = self.content[:call_start] + self.content[call_start:new_start].replace(func_name, func_name+INIT_FUNC_NAME, 1) +  self.content[new_start:]
 
                     res = re.search(pattern, self.content[search_start:])
 
@@ -450,7 +450,7 @@ int cal_idx(int count)
                 f.write(self.content)
             # Match '{' avoid matching a declaration
             search_pattern = "(\s*extern\s*|\s*unsigned\s*|\s*inline\s*|\s*signed\s*|\s*static\s*|\s*const\s*)*\s*{0}\s*{1}\s*\(\s*{2}\s*\)\s*{{".format(func_type, func_name, func_argument)
-            _, __, start_def = self.locateFuncBlk(search_pattern, self.content)
+            _, func_end, start_def = self.locateFuncBlk(search_pattern, self.content)
 
             function_def = self.content[start_def:_]
             res = re.search(func_type, function_def)
@@ -478,13 +478,11 @@ int cal_idx(int count)
                 self.fakecodes[func_name] = self.fakecodes[func_name].replace(ori_func_type+" "+var_name, constraints+" "+ori_func_type+" "+var_name)
                 res = re.search(r'return\s(\w+);', self.fakecodes[func_name][pos:])
 
-            if self.funcchain:
-                self.content = self.content[:start_def] + '\n' + self.fakecodes[func_name] + '\n' + self.content[start_def:]
 
-        # Find current main function
-        search_pattern = "[^\w]main\s*\(([^;]*?)\)"
-        start, end, _ = self.locateFuncBlk(search_pattern, self.content)
-        if self.funcchain:
+            self.fakecodes[func_name] = re.sub(r"extern\s*static", "extern ", self.fakecodes[func_name])
+
+            if self.funcchain:
+                self.content = self.content[:start_def] + '\n' + self.fakecodes[func_name] + '\n' + self.content[start_def:func_end+1] + '\n' + self.ori_itm_funcs[func_name] + '\n' + self.content[func_end+1:]
 
 
         # Find current main function
@@ -686,22 +684,26 @@ long gs(long a, int is_var)
         if start_def > main_start_def:
             start_def = main_start_def
         res = re.search(r"#\s*include\s*<\s*std", self.content)
+        
+        if res is not None:
+            include_pos = res.span()[0]
+            if include_pos > start_def:
+                start_def = include_pos
+
+        main_def_codes = '\n'
 
         for funcname in self.fakecodes.keys():
-
-
-            def_pattern = r'(\s*extern\s*|\s*unsigned\s*|\s*inline\s*|\s*signed\s*|\s*static\s*|\s*const\s*)*(\w+ \w+\(.*\){)'
+            def_pattern = r'(\s*extern\s*|\s*unsigned\s*|\s*inline\s*|\s*signed\s*|\s*static\s*|\s*const\s*)*(\w+\s*(\s+|\*+)\s*%s\d+\s*\([^;]*?\){)'%(funcname)
             res = re.findall(def_pattern, self.fakecodes[funcname])
 
             for func_def in res:
-                if type(func_def) is tuple:
-                    func_def = ' '.join(func_def)
-                    func_def.replace("\n", '')
-                main_def_codes += func_def[:-1]+";\n"
+                func_def = ' '.join(func_def[:2])
+                func_def = func_def.replace("\n", '')
+                main_def_codes += func_def[:-1]+" __attribute__((used));\n"
 
             def_pattern = r'(\s*extern\s*|\s*unsigned\s*|\s*inline\s*|\s*signed\s*|\s*static\s*|\s*const\s*)*(\w+\s*(\s+|\*+)\s*%s\s*\([^;]*?\))'%(funcname)
             res = re.search(def_pattern, self.content)
-            main_def_codes += res.group().strip() + ";\n"
+            main_def_codes += res.group().strip() + " __attribute__((used));\n"
 
         # Find the position of first non include or define statement
         self.content = self.content[:main_start_def] + "\n" + main_def_codes + self.content[main_start_def:]

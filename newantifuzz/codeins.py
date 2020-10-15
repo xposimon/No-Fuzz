@@ -79,7 +79,6 @@ class Antifuzz:
 #include<time.h>
 '''
 
-
     def genFakeFunc(self, func_type, argu, func_name, func_number):
 
         
@@ -159,8 +158,8 @@ void {0}({1}){{
                 fake_key_seg = fake_key_seg[1:3]
             
             code_seg += fake_func
-            if self.lan
-            code_seg += itm_func
+            if self.landingspace:
+                code_seg += itm_func
 
         if func_type.lower() == 'void':
             init_func = fake_func_void_template.format(fake_func_name+INIT_FUNC_NAME, argu, idx_name, vars, func_name + FUNC_PTR_TYPE_SUFFIX, COUNTER_NAME + ' = 0;\n'+FUNC_PTR_NAME+' = %s;')
@@ -418,7 +417,7 @@ int cal_idx(int count)
         # Replace function calls with init functions
             for func_name in self.funcPtr.keys():
                 func_argument = self.toTransFunc[func_name][1]
-                pattern = r"[^\w]%s\s*\(([^;]*?)\)" % (func_name)
+                pattern = r"[^\w]%s\s*\(([^;]*?)\)\s*[^;]" % (func_name)
                 search_start = 0
                 res = re.search(pattern, self.content[search_start:])
                 while res is not None:
@@ -482,6 +481,8 @@ int cal_idx(int count)
             self.fakecodes[func_name] = re.sub(r"extern\s*static", "extern ", self.fakecodes[func_name])
 
             if self.funcchain:
+                self.content[:start_def] + '\n' + self.fakecodes[func_name] + '\n' + self.content[start_def:]
+            if self.landingspace:
                 self.content = self.content[:start_def] + '\n' + self.fakecodes[func_name] + '\n' + self.content[start_def:func_end+1] + '\n' + self.ori_itm_funcs[func_name] + '\n' + self.content[func_end+1:]
 
 
@@ -721,7 +722,7 @@ if __name__ == "__main__":
     if len(sys.argv) > 3:
         TOPN_FREQUENT_FUNCS = int(sys.argv[3])
 
-    anti = Antifuzz([sys.argv[1]], funcchain=True)
+    anti = Antifuzz([sys.argv[1]], funcchain=True, landingspace=True)
     anti.funcsIdentify()
     anti.funcTrans()
 

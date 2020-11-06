@@ -1,18 +1,21 @@
 import time, os, subprocess
 
-last_time = 12 * 3600 #seconds
-parallel_num = 2
-execute_one_round = 7
+last_time = 20   #seconds
+parallel_num = 1
+execute_one_round = 12
 
 bin_format = '{binname}_{num}_{attype}'
-cmd_formats = ['nohup afl-fuzz -Q -i ./{bin_name}/input -o ./{bin_name}/{outputdir}{fuzzerid} {delay} -%s {taskname}_fuzz%d -- ./{bin_name}/{taskname} {run_cmd} >/dev/null 2>&1 &', 'nohup aflfast -Q -i ./{bin_name}/input -o ./{bin_name}/{outputdir}{fuzzerid} {delay} -%s {taskname}_fuzz%d -- ./{bin_name}/{taskname} {run_cmd} >/dev/null 2>&1 &', 'nohup honggfuzz -i ./{bin_name}/input -o ./{bin_name}/{outputdir}{fuzzerid} -n '+str(parallel_num)+' -- ~/honggfuzz/qemu_mode/honggfuzz-qemu/x86_64-linux-user/qemu-x86_64 ./{bin_name}/{taskname} {run_cmd} >/dev/null 2>&1 &']
+cmd_formats = ['nohup afl-fuzz -Q -i ./{bin_name}/input -o ./{bin_name}/{outputdir}{fuzzerid} {delay} -%s {taskname}_fuzz%d -- ./{bin_name}/{taskname} {run_cmd} >/dev/null 2>&1 &', 'nohup aflfast -Q -i ./{bin_name}/input -o ./{bin_name}/{outputdir}{fuzzerid} {delay} -%s {taskname}_fuzz%d -- ./{bin_name}/{taskname} {run_cmd} >/dev/null 2>&1 &', 'nohup honggfuzz -i ./{bin_name}/input -o ./{bin_name}/{outputdir}{fuzzerid} -n 2 -- ~/honggfuzz/qemu_mode/honggfuzz-qemu/x86_64-linux-user/qemu-x86_64 ./{bin_name}/{taskname} {run_cmd} >/dev/null 2>&1 &']
 #qsym_cmd_formats = ['nohup afl-fuzz -Q -i ./{bin_name}/input -o ./{bin_name}/{outputdir} {delay} -%s {taskname}_fuzz%d -- ./{bin_name}/{taskname} {run_cmd} >/dev/null 2>&1 &', 'nohup python3 run_qsym_afl.py -a {taskname}_fuzz%d -o ./{bin_name}/{outputdir} -n qsym -- ./{bin_name}/{taskname} {run_cmd} >/dev/null 2>&1 &']
 
 run_cmds = {'readelf':' -a @@', 'objdump':' -d @@', 'nm':' @@', 'objcopy':' -S @@'}
-tasks = {'readelf':[('0','ori', '')] + [(str(i*100), 'funcchain', '') if i < 2 else (str(i*100), 'funcchain', '-t 5000') for i in (5,10,30)] + [('10000', 'atbr', '-t 5000')], 
-'objdump':[('0', 'ori', ''), ('500', 'funcchain', ''), ('1000', 'funcchain', ' -t 5000'), ('3000', 'funcchain', ' -t 5000'), ('10000', 'atbr', '-t 5000')],
-'nm':[('0', 'ori', ''), ('500', 'funcchain', ''), ('1000', 'funcchain', ' -t 5000'), ('3000', 'funcchain', ' -t 5000'), ('10000', 'atbr', '-t 5000')],
-'objcopy':[('0', 'ori', ''), ('500', 'funcchain', ''), ('1000', 'funcchain', ' -t 5000'), ('3000', 'funcchain', ' -t 5000'), ('10000', 'atbr', '-t 5000')]
+tasks = {'readelf':[(str(i*100), 'chainland', '-t 5000') for i in (5, 30)] #+[('0', 'ori', '')]+[(str(i*100), 'chainland', '') if i < 2 else (str(i*100), 'funcchain', '-t 5000') for i in (5,10,30)], #+ [('10000', 'atbr', '-t 5000')], 
+, 'objdump':[(str(i*100), 'chainland', '-t 5000') for i in (5, 30)],
+'nm':[(str(i*100), 'chainland', '-t 5000') for i in (5,30)],
+'objcopy':[(str(i*100), 'chainland', '-t 5000') for i in (5, 30)]
+#'objdump':[('0', 'ori', ''), ('500', 'funcchain', ''), ('500', 'chainland', ''), ('1000', 'chainland', ' -t 5000'), ('1000', 'funcchain', '-t 5000'), ('3000', 'funcchain', ' -t 5000'), ('3000', 'chainland', '-t 5000')], #, ('10000', 'atbr', '-t 5000')],
+#'nm':[('0', 'ori', ''), ('500', 'funcchain', '') ,('500', 'chainland', ''), ('1000', 'funcchain', '-t 5000'), ('1000', 'chainland', ' -t 5000'), ('3000', 'funcchain', '-t 5000') ,('3000', 'chainland', ' -t 5000')], #('10000', 'atbr', '-t 5000')],
+#'objcopy':[('0', 'ori', ''), ('500', 'funcchain', ''), ('500', 'chainland', ''), ('1000', 'funcchain', '-t 5000'), ('1000', 'chainland', ' -t 5000'), ('3000', 'funcchain', '-t 5000'),('3000', 'chainland', ' -t 5000')] #, ('10000', 'atbr', '-t 5000')]
 }
 
 commands = []
@@ -29,7 +32,7 @@ for fuzzerid, cmd_format in enumerate(cmd_formats):
                 parallel_commands += [commands[i]%(host_type, id) for host_type, id in [('M',0)] + [('S', j) for j in range(1, parallel_num)] ]
         if fuzzerid == 2:
             tmp = [cmd_format.format(bin_name=binname, outputdir = bin_format.format(binname=binname, num=funcnum, attype=aptype)+'_output', taskname = bin_format.format(binname=binname,num=funcnum, attype=aptype), run_cmd=run_cmds[binname].replace("@@", "___FILE___"), fuzzerid=fuzzerid) for funcnum, aptype, t in tasks[binname]]
-            tmp = [[tmp[i]] + ['' for j in range(parallel_num-1)]  for i in range(len(tmp))]
+            tmp = [['' for j in range(parallel_num-1)] + [tmp[i]] for i in range(len(tmp))]
             final = []
             for i in range(len(tmp)):
                 final += tmp[i]
@@ -63,6 +66,7 @@ while cnt*parallel_num*execute_one_round < len(parallel_commands):
     if check_num != correct_check_num:
         os.system("pkill afl-fuzz")
         os.system("pkill aflfast")
+        os.system("pkill afl")
         os.system("pkill honggfuzz")
         print(check_num, correct_check_num)
         time.sleep(10)
@@ -78,6 +82,7 @@ while cnt*parallel_num*execute_one_round < len(parallel_commands):
             print("[*] End")
             os.system("pkill afl-fuzz")
             os.system("pkill aflfast")
+            os.system("pkill afl")
             os.system("pkill honggfuzz")
             time.sleep(2)
             break

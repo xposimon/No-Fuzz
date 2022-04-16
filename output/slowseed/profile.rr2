@@ -1,3 +1,0 @@
-#!/usr/bin/rarun2
-program=/home/xposimon/Desktop/ATEliminator/readelf_afl
-stdin=/home/xposimon/Desktop/ATEliminator/./output/slowseed/id:000001, 0

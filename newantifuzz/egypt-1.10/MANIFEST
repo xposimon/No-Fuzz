@@ -1,5 +1,0 @@
-MANIFEST                                 This file
-CHANGES                                  Change log
-Makefile.PL                              Makefile generator
-egypt                                    The program
-META.yml                                 Module meta-data (added by MakeMaker)

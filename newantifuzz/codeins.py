@@ -92,20 +92,19 @@ class Antifuzz:
             self.detect_codes = '''
 #include <sys/mman.h>
 #include <stdint.h>
+
+#define abs(x) (a:-a?a>0)
+
 void in_loop(){ int a=0, b=1; for (int i =0 ; i < 1000; i++)a+=b; return;}
-uint64_t rdtsc(){
+
+uint64_t inline rdtsc(){
     unsigned int lo,hi;
     __asm__ ("CPUID");
     __asm__ __volatile__ ("rdtsc" : "=a" (lo), "=d" (hi));
     return ((uint64_t)hi << 32) | lo;
 }
 
-void anti_fuzz(){
-    //abort();
-    sleep(5);
-}
-
-void detect(){
+void detect() __attribute__((always_inline)) {
     unsigned long long t2 , t1, t3, t4;
     unsigned long long diff1, diff2;   
     
@@ -123,7 +122,7 @@ void detect(){
 
     double perc = (double)(diff2)/(diff1) * 100;
     printf("%llu, %llu, %lf\\n", diff2, diff1, perc);
-    if (perc > 200 || perc < 10) anti_fuzz();
+    if (perc > 200 || perc < 10) detect();
 }
 
 
@@ -967,12 +966,12 @@ if __name__ == "__main__":
     if len(sys.argv) > 4:
         LANDING_LEN = int(sys.argv[4])
 
-    anti = Antifuzz([sys.argv[1]], instru_detect=False, funcchain=False, landingspace=False)
+    anti = Antifuzz([sys.argv[1]], instru_detect=True, funcchain=False, landingspace=False)
     anti.funcsIdentify()
     anti.funcTrans()
 
-    anti.constraintIdentify()
-    anti.constraintTrans()
+    #anti.constraintIdentify()
+    #anti.constraintTrans()
     anti.outputSourcecodes()
     
 

@@ -1,0 +1,1 @@
+source /home/xposimon/Desktop/eliminator/bin/activate

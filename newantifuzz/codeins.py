@@ -93,7 +93,7 @@ class Antifuzz:
 #include <sys/mman.h>
 #include <stdint.h>
 
-#define abs(x) (a:-a?a>0)
+#define abs(x) ((a>0)?(a):(-a))
 
 void in_loop(){ int a=0, b=1; for (int i =0 ; i < 1000; i++)a+=b; return;}
 
@@ -966,7 +966,7 @@ if __name__ == "__main__":
     if len(sys.argv) > 4:
         LANDING_LEN = int(sys.argv[4])
 
-    anti = Antifuzz([sys.argv[1]], instru_detect=True, funcchain=False, landingspace=False)
+    anti = Antifuzz([sys.argv[1]], instru_detect=True, funcchain=True, landingspace=True)
     anti.funcsIdentify()
     anti.funcTrans()
 

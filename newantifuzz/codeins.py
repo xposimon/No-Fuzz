@@ -92,6 +92,7 @@ class Antifuzz:
             self.detect_codes = '''
 #include <sys/mman.h>
 #include <stdint.h>
+#include <unistd.h>
 
 #define abs(x) ((a>0)?(a):(-a))
 
@@ -102,6 +103,11 @@ uint64_t inline rdtsc(){
     __asm__ ("CPUID");
     __asm__ __volatile__ ("rdtsc" : "=a" (lo), "=d" (hi));
     return ((uint64_t)hi << 32) | lo;
+}
+
+void anti_fuzz(){
+    // direct delay, can be replaced by a series of calculations or even abort/block the program
+    sleep(5);
 }
 
 void detect() __attribute__((always_inline)) {
@@ -122,7 +128,7 @@ void detect() __attribute__((always_inline)) {
 
     double perc = (double)(diff2)/(diff1) * 100;
     printf("%llu, %llu, %lf\\n", diff2, diff1, perc);
-    if (perc > 200 || perc < 10) detect();
+    if (perc > 130 || perc < 70) anti_fuzz();
 }
 
 

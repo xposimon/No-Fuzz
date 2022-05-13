@@ -90,13 +90,19 @@ class Antifuzz:
 
         if self.instru_detect:
             self.detect_codes = '''
+#include<stdlib.h>
+#include<time.h>
+
+#include <fcntl.h>
 #include <sys/mman.h>
 #include <stdint.h>
 #include <unistd.h>
 
 #define abs(x) ((a>0)?(a):(-a))
 
-void in_loop(){ int a=0, b=1; for (int i =0 ; i < 1000; i++)a+=b; return;}
+unsigned long long atfz_t2, atfz_t1;
+
+void in_loop(){ int a=0, b=1, i; for (i =0 ; i < 1000; i++)a+=b; return;}
 
 uint64_t inline rdtsc(){
     unsigned int lo,hi;
@@ -105,12 +111,41 @@ uint64_t inline rdtsc(){
     return ((uint64_t)hi << 32) | lo;
 }
 
-void anti_fuzz(){
-    // direct delay, can be replaced by a series of calculations or even abort/block the program
-    sleep(5);
+
+void delay(void)
+{
+  fd_set set;
+  struct timeval timeout;
+  int rv;
+  char buff[100];
+  int len = 90;
+  int stdinput = dup(STDIN_FILENO);
+  int filedesc = open(stdinput, O_WRONLY);
+
+  FD_ZERO(&set); /* clear the set */
+  //FD_SET(filedesc, &set); /* add our file descriptor to the set */
+
+  timeout.tv_sec = 1;
+  timeout.tv_usec = 0;
+
+  rv = select(filedesc + 1, &set, NULL, NULL, &timeout);
+  
+  if(rv == -1)
+    perror("select"); /* an error accured */
+  else if(rv == 0)
+    printf("timeout"); /* a timeout occured */
+  else
+    read( filedesc, buff, len ); /* there was data to read */
+  close(filedesc);
 }
 
-void detect() __attribute__((always_inline)) {
+void anti_fuzz(){
+    // direct delay, can be replaced by a series of calculations or even abort/block the program
+    delay();
+}
+
+void detect() __attribute__((always_inline));
+void detect() {
     unsigned long long t2 , t1, t3, t4;
     unsigned long long diff1, diff2;   
     
@@ -119,18 +154,18 @@ void detect() __attribute__((always_inline)) {
     t4 = rdtsc () ;
    
     t1 = rdtsc () ;
-    int a=0, b=1;
-    for (int i =0 ; i < 1000; i++)a+=b;
+    int a=0, b=1, i;
+    for (i =0 ; i < 1000; i++)a+=b;
     t2 = rdtsc () ;
     
     diff1 =  (t2-t1);
     diff2 =  (t4-t3);  
 
     double perc = (double)(diff2)/(diff1) * 100;
+    printf("%llu, %llu, %llu, %llu\\n", t1, t2, t3, t4);
     printf("%llu, %llu, %lf\\n", diff2, diff1, perc);
-    if (perc > 130 || perc < 70) anti_fuzz();
+    if (perc > 130) anti_fuzz();
 }
-
 
 '''
 
@@ -177,12 +212,14 @@ void detect() __attribute__((always_inline)) {
                 land_sp = land_sp[:i+1] + land_sp[i+2:]
             i+= 1
         asb_codes = ('\\n'.join(land_sp) + "\\n")
+        
         return asb_codes
 
 
     def genFakeFunc(self, func_type, argu, func_name, func_number):
 
         intermidiate_junk_template = '''
+extern {0} {1} ({2}) __attribute__((used));
 extern {0} {1} ({2});
 __asm__ (
 "{1}:\\n"
@@ -192,42 +229,45 @@ __asm__ (
 '''
         if self.landingspace:
             fake_func_ret_template = '''
+{0} {1}({2}) __attribute__((used));
 {0} {1}({2}){{
     {7}
-    int {3} = cal_idx('''+COUNTER_NAME+'''++);
-    if ({3} != -1){{{8} {4} = (({6})('''+FUNC_PTR_NAME+'''[{3}]+rand()%'''+str(LANDING_LEN+1)+'''))({5});
-        return {4};
-    }}
+    int {3} = '''+INDEX_NAME+'''['''+COUNTER_NAME+'''++];
+    {8} {4} = (({6})('''+FUNC_PTR_NAME+'''[{3}]+rand()%'''+str(LANDING_LEN+1)+'''))({5});
+    return {4};
+    
 }}
 '''
 
             fake_func_void_template = ''' 
+void {0}({1}) __attribute__((used));
 void {0}({1}){{
     {5}
-    int {2} = cal_idx('''+COUNTER_NAME+'''++);
-    if ({2} != -1){{(({4})('''+FUNC_PTR_NAME+'''[{2}]+rand()%'''+str(LANDING_LEN+1)+'''))({3});
-        return;
-    }}
+    int {2} = '''+INDEX_NAME+'''['''+COUNTER_NAME+'''++];
+    (({4})('''+FUNC_PTR_NAME+'''[{2}]+rand()%'''+str(LANDING_LEN+1)+'''))({3});
+    return;
+    
 }}
 '''
         else:
             fake_func_ret_template = '''
+{0} {1}({2}) __attribute__((used));
 {0} {1}({2}){{
     {7}
-    int {3} = cal_idx('''+COUNTER_NAME+'''++);
-    if ({3} != -1){{{8} {4} = (({6})('''+FUNC_PTR_NAME+'''[{3}]))({5});
-        return {4};
-    }}
+    int {3} = '''+INDEX_NAME+'''['''+COUNTER_NAME+'''++];
+    {8} {4} = (({6})('''+FUNC_PTR_NAME+'''[{3}]))({5});
+    return {4};
+    
 }}
 '''
 
             fake_func_void_template = ''' 
+void {0}({1}) __attribute__((used));
 void {0}({1}){{
     {5}
-    int {2} = cal_idx('''+COUNTER_NAME+'''++);
-    if ({2} != -1){{(({4})('''+FUNC_PTR_NAME+'''[{2}]))({3});
-        return;
-    }}
+    int {2} = '''+INDEX_NAME+'''['''+COUNTER_NAME+'''++];
+    (({4})('''+FUNC_PTR_NAME+'''[{2}]))({3});
+    return;
 }}
 '''
 
@@ -424,35 +464,29 @@ void {0}({1}){{
             if len(func_calls) > 0:
                 self.toTransFunc[func_name] = (func_type, func_argument)
 
-        insert_codes_ident = '#############For anti fuzz###############'
-        main_codes_rand_init = main_codes[0] + insert_codes_ident + main_codes[1:]
-
-        if self.funcchain:
-        # Random initialization
-            self.content = self.content.replace(main_codes, main_codes_rand_init.replace(insert_codes_ident, 'time_t timestamp;\nsrand((unsigned) time(&timestamp));\n'))
-
         #print(self.toTransFunc)
-
 
     def funcTrans(self):
         '''
-        int cal_idx(int count)
-        {
-            if (!count)
-                for (int i = 0; i < 1000; index[i++]=i-1);
-            int idx = rand() % (1000-count);
-            for (int i = idx; i < 1000-count-1; i++)index[i] = index[i+1];
-            return idx;
-        }
-
         int ab_count = 0;
         int index[CODE_SEG_LEN] = {};
         void** funcs;
 
+        void cal_idx()
+	{
+	    int i,j;
+		for (i = 0; i < 1000; i++)index[i] = i;
+	    for (i = 999; i > 0; i--){
+		j = rand()%(i+1);
+		swap(index[i], index[j]);
+		}
+
+	}
+
         // Replace function call with
 
         ab_count = 0;
-        int idx = cal_idx(ab_count++);
+        int idx = index[ab_count++];
 
         ret = ((fp)funcs[idx])(argu);
         return ret
@@ -522,20 +556,25 @@ void {0}({1}){{
             self.fakecodes[func_name] += added_code_seg
             
         cal_idx = '''
+void swap(int *a, int *b)
+{{
+    int temp = *a;
+    *a = *b;
+    *b = temp;
+}}
+
 static void **''' + FUNC_PTR_NAME + ''';
 static int ''' + COUNTER_NAME + ''' = 0;
 static int ''' + INDEX_NAME + '''[{0}] = {{}};
 static void (*''' + FUNC_BUF_NAME + '''[''' + str(CODE_SEG_LEN * len(self.funcPtr)) + ''']) = {{}};
-int cal_idx(int count)
+void cal_idx()
 {{
-    if (!count)
-        for (int i = 0; i < {0}; ''' + INDEX_NAME + '''[i++]=i-1);
-    int remaining = {0} - count;
-    if(remaining <= 0) return -1;
-    int idx = rand() % (remaining);
-    int res = ''' + INDEX_NAME + '''[idx];
-    ''' + INDEX_NAME + '''[idx] = ''' + INDEX_NAME + '''[remaining-1];
-    return res;
+    int i,j;
+    for (i = 0; i < {0}; i++)'''+INDEX_NAME+'''[i] = i;
+    for (i = {0} - 1; i > 0; i--){{
+        j = rand() % (i+1);
+        swap(&'''+INDEX_NAME+'''[i], &'''+INDEX_NAME+'''[j]);
+    }}
 }}
 '''
         if self.funcchain:
@@ -562,9 +601,10 @@ int cal_idx(int count)
         fill_funcs_codes = ''
         if self.funcchain:
             func_assignment = FUNC_BUF_NAME+'[{0}] = {1};'
+            fill_funcs_codes += "\ntime_t timestamp;\nsrand((unsigned) time(&timestamp));\ncal_idx();\n"
             for i in range(len(funcs_list)):
                 fill_funcs_codes += func_assignment.format(i, funcs_list[i])
-
+            
         # Function calls initialization
         for func_name,l in self.funcPtr.items():
             if self.landingspace:
@@ -623,6 +663,7 @@ int cal_idx(int count)
             func_pos, _ = res.span()
             constraints = function_def[:func_pos].strip()
             # Add constraints
+            
             self.ori_itm_funcs[func_name] = self.ori_itm_funcs[func_name].replace(ori_func_type+" "+func_name, constraints+" "+ori_func_type+" "+func_name)
             self.fakecodes[func_name] = self.fakecodes[func_name].replace(ori_func_type+" "+func_name, constraints+" "+ori_func_type+" "+func_name)
                        
@@ -633,7 +674,7 @@ int cal_idx(int count)
                     self.earliest_func = "(\s*extern\s*|\s*unsigned\s*|\s*inline\s*|\s*signed\s*|\s*static\s*|\s*local\s*|\s*const\s*)*\s*{0}\s*{1}\s*\(\s*{2}\s*\)\s*{{".format(func_type, func_name+"0", func_argument)
                 else:
                     self.earliest_func = "(\s*extern\s*|\s*unsigned\s*|\s*inline\s*|\s*signed\s*|\s*static\s*|\s*local\s*|\s*const\s*)*\s*{0}\s*{1}\s*\(\s*{2}\s*\)\s*{{".format(func_type, func_name, func_argument)
-
+            
             res = re.search(r'return\s(\w+);', self.fakecodes[func_name])
             pos = 0
 
@@ -918,40 +959,8 @@ long gs(long a)
             if include_pos > start_def:
                 start_def = include_pos
 
-        main_def_codes = '\n'
-
-        for funcname in self.fakecodes.keys():
-            def_pattern = r'(\s*extern\s*|\s*unsigned\s*|\s*inline\s*|\s*signed\s*|\s*static\s*|\s*local\s*|\s*const\s*)*(\w+\s*(\s+|\*+)\s*%s\d+\s*\([^;]*?\){)'%(funcname)
-            res = re.findall(def_pattern, self.fakecodes[funcname])
-
-            for func_def in res:
-                func_def = ' '.join(func_def[:2])
-                func_def = func_def.replace("\n", '')
-
-                tmp = func_def[:-1]+" __attribute__((used));\n"
-                main_def_codes += tmp
-
-                tmp = re.sub(r"extern\s*static", "extern ", tmp)
-                tmp = re.sub(r"extern\s*local", "extern ", tmp)    
-                tmp = " " + tmp
-                tmp = re.sub(r"\sstatic\s", "extern ", tmp) 
-                #print(tmp)
-                main_def_codes += tmp.replace(funcname, funcname+INTERMEDIATE_IDENT)
-                   
-            def_pattern = r'(\s*extern\s*|\s*unsigned\s*|\s*inline\s*|\s*signed\s*|\s*static\s*|\s*local\s*|\s*const\s*)*(\w+\s*(\s+|\*+)\s*%s\s*\([^;]*?\))'%(funcname)
-            res = re.search(def_pattern, self.content)
-            tmp = res.group().strip() + " __attribute__((used));\n"
-            main_def_codes += tmp
-            main_def_codes += tmp.replace(funcname, funcname+INIT_FUNC_NAME)
-            
-            tmp = re.sub(r"extern\s*static", "extern ", tmp)
-            tmp = re.sub(r"extern\s*local", "extern ", tmp)    
-            tmp = " " + tmp
-            tmp = re.sub(r"\sstatic\s", "extern ", tmp) 
-            main_def_codes += tmp.replace(funcname, funcname+INTERMEDIATE_IDENT)
-
         if self.funcchain or self.landingspace:
-            self.content = self.content[:main_start_def] + "\n" + main_def_codes + self.content[main_start_def:]
+            self.content = self.content[:main_start_def] + "\n" + self.content[main_start_def:]
 
         if self.instru_detect:
             self.def_codes += self.detect_codes
@@ -975,7 +984,7 @@ if __name__ == "__main__":
     anti = Antifuzz([sys.argv[1]], instru_detect=True, funcchain=True, landingspace=True)
     anti.funcsIdentify()
     anti.funcTrans()
-
+    
     #anti.constraintIdentify()
     #anti.constraintTrans()
     anti.outputSourcecodes()

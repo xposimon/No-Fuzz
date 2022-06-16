@@ -105,7 +105,7 @@ unsigned long long atfz_t2, atfz_t1;
 
 void in_loop(){ int a=0, b=1, i; for (i =0 ; i < 1000; i++)a+=b; return;}
 
-uint64_t inline rdtsc(){
+uint64_t rdtsc(){
     unsigned int lo,hi;
     __asm__ ("CPUID");
     __asm__ __volatile__ ("rdtsc" : "=a" (lo), "=d" (hi));
@@ -419,9 +419,7 @@ void {0}({1}){{
         if self.landingspace:
             origin_itm_func = intermidiate_junk_template.format(func_type, fake_func_name+INTERMEDIATE_IDENT, argu, fake_func_name, self.gen_ins(LANDING_LEN, fake_func_name+INTERMEDIATE_IDENT))
             return code_seg, fake_key_seg, init_func, origin_itm_func
-        else:
             return code_seg, fake_key_seg, init_func
-
 
     def locateFuncBlk(self, search_pattern, codes):
         start = -1
@@ -472,7 +470,7 @@ void {0}({1}){{
 
         # Search for high appearance functions
 
-        pattern = r"(\w+\s*[\*,&]*)\s+(\w+)\s*\(([^;]*?)\)\s*{"
+        pattern = r"(\w+\s*[\*,&]*)\s+(\w+)\s*\(([^;<>\.()]*?)\)\s*{"
         #print(pattern)
         funcs = re.findall(pattern , content)
         
@@ -674,7 +672,7 @@ void cal_idx()
         # Function list fill addresses of functions
         fill_funcs_codes = ''
         if self.funcchain:
-            func_assignment = FUNC_BUF_NAME+'[{0}] = {1};'
+            func_assignment = FUNC_BUF_NAME+'[{0}] = (void*){1};'
             fill_funcs_codes += "\ntime_t timestamp;\nsrand((unsigned) time(&timestamp));\ncal_idx();\n"
             for i in range(len(funcs_list)):
                 fill_funcs_codes += func_assignment.format(i, funcs_list[i])

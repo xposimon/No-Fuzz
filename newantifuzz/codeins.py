@@ -59,12 +59,13 @@ def check_nested(operand):
 class Antifuzz:
     # Antifuzz for C
 
-    def __init__(self, sources, funcchain = True, constrans = True, landingspace=True, instru_detect=True):
+    def __init__(self, sources, funcchain = True, daemon_process = True, constrans = True, landingspace=True, instru_detect=True):
         self.sources = sources
         self.funcchain = landingspace
         self.constrans = constrans
         self.landingspace = landingspace
         self.instru_detect = instru_detect
+        self.daemon_process = daemon_process
         # To use landingspace, must use funcchain for functions containing jump instructions
         if self.landingspace:
             self.funcchain = True
@@ -168,7 +169,80 @@ void detect() {
 }
 
 '''
+        if self.daemon_process:
+            self.daemon_process_codes = '''
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <sys/stat.h>
 
+#define ERR_EXIT(m) \
+do\
+{\
+    perror(m);\
+    exit(EXIT_FAILURE);\
+}\
+while (0);\
+
+#define START_FD 1000
+#define ATFZ_ALERT_NUM 60
+#define PATROL_TIME 30
+#define ATFZ_PREFIX ("/tmp/.atfz_deamon")
+
+void creat_daemon(void)
+{
+ 
+    pid_t pid;
+    pid = fork();
+   
+    if( pid == -1)
+        ERR_EXIT("fork error");
+    if(pid == 0 )
+    {
+        if(setsid() == -1)
+            ERR_EXIT("SETSID ERROR");
+        umask(0);
+
+        int atfz_cnt = 1;
+        char atfz_file[30], dest_file[30];
+        FILE *fp;
+
+        sprintf(dest_file, "%s%d", ATFZ_PREFIX, ATFZ_ALERT_NUM);
+        fp = fopen(dest_file, "r");
+
+        if (fp)
+            exit(EXIT_SUCCESS);
+
+        while (atfz_cnt <= ATFZ_ALERT_NUM){
+            sprintf(atfz_file, "%s%d", ATFZ_PREFIX, atfz_cnt);
+            fp = fopen(atfz_file, "r");
+            if (!fp){
+                break;
+            }
+            atfz_cnt++;
+        }
+
+        sprintf(atfz_file, "%s%d", ATFZ_PREFIX, atfz_cnt);
+
+        fp = fopen(atfz_file, "w");
+
+        sleep(PATROL_TIME);
+
+        fclose(fp);
+
+        printf("%s\\n", atfz_file);
+
+        if (atfz_cnt < ATFZ_ALERT_NUM)
+            remove(atfz_file);
+
+        exit(EXIT_SUCCESS);
+    }
+  
+    return;
+
+}
+
+'''
 
     def gen_ins(self, length, func_name):
         random.seed(time.time())
@@ -494,9 +568,9 @@ void {0}({1}){{
         earliest_fake_code = 99999999999999999
         self.earliest_func = ''
 
-        if len(self.toTransFunc) == 0:
-            print("No functions identified")
-            return
+        # if len(self.toTransFunc) == 0:
+        #     print("No functions identified")
+        #     return
 
         # Find function definitions, add fake path to definitions, and create their fake copies
 
@@ -707,6 +781,19 @@ void cal_idx()
 
         if self.instru_detect:
             fill_funcs_codes += "\ndetect();\n"
+        
+        if self.daemon_process:
+            fill_funcs_codes += '''
+FILE *atfz_fp;
+char dest_file[30];
+sprintf(dest_file, "%s%d", ATFZ_PREFIX, ATFZ_ALERT_NUM);
+atfz_fp = fopen(dest_file, "r");
+if (atfz_fp){
+    printf("Fuzzer detected!\\n");
+    abort();
+}
+creat_daemon();
+            '''
         
         self.content = self.content[:start+1] + fill_funcs_codes + self.content[start+1:]
 
@@ -964,6 +1051,10 @@ long gs(long a)
 
         if self.instru_detect:
             self.def_codes += self.detect_codes
+        
+        if self.daemon_process:
+            self.def_codes += self.daemon_process_codes
+
 
         self.content = self.content[:start_def] + '\n' + self.def_codes + '\n' + self.content[start_def:]
         with open("output.c", "w") as f:
@@ -981,7 +1072,7 @@ if __name__ == "__main__":
     if len(sys.argv) > 4:
         LANDING_LEN = int(sys.argv[4])
 
-    anti = Antifuzz([sys.argv[1]], instru_detect=True, funcchain=True, landingspace=True)
+    anti = Antifuzz([sys.argv[1]], instru_detect=False, daemon_process=True, funcchain=False, landingspace=False)
     anti.funcsIdentify()
     anti.funcTrans()
     

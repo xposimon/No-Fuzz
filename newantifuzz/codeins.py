@@ -145,7 +145,6 @@ void anti_fuzz(){
     delay();
 }
 
-void detect() __attribute__((always_inline));
 void detect() {
     unsigned long long t2 , t1, t3, t4;
     unsigned long long diff1, diff2;   
@@ -407,6 +406,7 @@ void {0}({1}){{
 
         if func_type.lower() == 'void':
             init_func = fake_func_void_template.format(fake_func_name+INIT_FUNC_NAME, argu, idx_name, vars, func_name + FUNC_PTR_TYPE_SUFFIX, COUNTER_NAME + ' = 0;\n'+FUNC_PTR_NAME+' = %s;')
+            init_func += "\nvoid {0}({1}) __attribute__((used));\n".format(fake_func_name, argu)
         else:
             ret_name = get_random_string(10)
             rettype = func_type.strip()
@@ -414,7 +414,7 @@ void {0}({1}){{
                 rettype = rettype[6:]
             
             init_func = fake_func_ret_template.format(func_type, fake_func_name+INIT_FUNC_NAME, argu, idx_name, ret_name, vars, func_name + FUNC_PTR_TYPE_SUFFIX, COUNTER_NAME + ' = 0;\n'+FUNC_PTR_NAME+' = %s;', rettype)
-           
+            init_func += "\n{0} {1}({2}) __attribute__((used));\n".format(func_type, fake_func_name, argu)
 
         if self.landingspace:
             origin_itm_func = intermidiate_junk_template.format(func_type, fake_func_name+INTERMEDIATE_IDENT, argu, fake_func_name, self.gen_ins(LANDING_LEN, fake_func_name+INTERMEDIATE_IDENT))
